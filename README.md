@@ -1,0 +1,80 @@
+# DepartureBoardSaver
+
+Built by [Justyn Henman](https://github.com/justynhenman).
+
+This project is a macOS screen saver that displays a real-time UK train departure board! It is modelled on the classic dot-matrix boards found at British railway stations. Inspired and derived from [chrisys/train-departure-display](https://github.com/chrisys/train-departure-display).
+
+Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 60 seconds.
+
+## Display styles
+
+| Style | Description |
+|-------|-------------|
+| **Dot Matrix** (default) | Each pixel rendered as a physical amber LED dot with glow, powered by Metal for GPU acceleration |
+| **OLED** | Amber on black, teletext style [NO GPU ACCELERATION] |
+| **LCD** | White text on dark navy [NO GPU ACCELERATION] |
+
+## Requirements
+
+- macOS 14 Sonoma or later
+- Xcode 16 or later
+- A free National Rail Darwin API key — register at [realtime trains](https://realtime.nationalrail.co.uk/OpenLDBWSRegistration/)
+
+## Building
+
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/justynhenman/DepartureBoardSaver.git
+   cd DepartureBoardSaver
+   ```
+
+2. Open the project in Xcode:
+   ```sh
+   open DepartureBoardSaver.xcodeproj
+   ```
+
+3. Select the **DepartureBoardSaver** scheme and build (`⌘B`). The compiled `.saver` bundle lands in `Products/DepartureBoardSaver.saver`.
+
+   A **DepartureBoardSaverTestHost** scheme is also included — this is a lightweight macOS app that hosts the screen saver view directly, making it easy to iterate without installing the `.saver` bundle each time.
+
+## Installation
+
+Double-click `DepartureBoardSaver.saver` — macOS will prompt you to install it into Screen Saver preferences.
+
+Alternatively, you can copy it manually:
+
+```sh
+# current user only
+cp -R Products/DepartureBoardSaver.saver ~/Library/Screen\ Savers/
+
+# all users (requires admin)
+sudo cp -R Products/DepartureBoardSaver.saver /Library/Screen\ Savers/
+```
+
+Then open **System Settings → Wallpaper**, click **Screen Saver**, scroll to the bottom to 'other', select **DepartureBoardSaver**, and click **Options** to enter your API key and station CRS code (e.g. `PAD` for London Paddington).
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| API Key | Your National Rail Darwin token |
+| Station | Three-letter CRS code (e.g. `PAD`, `WAT`, `MAN`) |
+| Display style | Dot Matrix / OLED / LCD |
+| Side padding | Percentage of screen width to leave on each side (0–30%) |
+| Show station in clock | Toggle the station name in the clock panel |
+| Metal rendering | GPU-accelerated dot-matrix mode (enabled by default) |
+
+Settings are stored in `~/Library/Preferences/justynhenman.DepartureBoardSaver.plist`.
+
+## Architecture
+
+| File | Role |
+|------|------|
+| `DepartureBoardSaverView.swift` | `ScreenSaverView` subclass — animation loop, Metal layer management, drawing dispatch |
+| `DepartureBoard.swift` | Layout engine — positions rows, scrolling text, clock |
+| `DepartureService.swift` | Async SOAP client for the OpenLDBWS endpoint |
+| `DepartureBoardConfig.swift` | Persistent settings via `ScreenSaverDefaults` |
+| `DotMatrixMetalRenderer.swift` | GPU renderer — dot glow and grid via Metal |
+| `DotMatrixShaders.metal` | Metal shader source |
+| `ConfigureSheetController.swift` | Options sheet presented by Screen Saver preferences |
+| `BoardFonts.swift` | Dot Matrix font registration helpers |
