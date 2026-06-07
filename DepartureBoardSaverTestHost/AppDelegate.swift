@@ -14,7 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
 
     // MARK: - Launch
 
-    func applicationDidFinishLaunching(_ note: Notification) {        
+    func applicationDidFinishLaunching(_ note: Notification) {
         loadSaverClass()
         buildWindow()
         buildSaverView()
