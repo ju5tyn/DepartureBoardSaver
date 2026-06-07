@@ -3,7 +3,7 @@
   DepartureBoardSaver
 </h1>
 
-Built by [Justyn Henman](https://github.com/justynhenman).
+Built by [Justyn Henman](https://github.com/ju5tyn).
 
 
 <p align="center">
