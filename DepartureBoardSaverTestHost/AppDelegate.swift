@@ -120,7 +120,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
             let item = NSToolbarItem(itemIdentifier: id)
             item.label   = "Options"
             item.toolTip = "Open the screensaver's configure sheet"
-            item.image   = NSImage(systemSymbolName: "slider.horizontal.3",
+            item.image   = NSImage(systemSymbolName: "gear",
                                    accessibilityDescription: "Options")
             item.target  = self
             item.action  = #selector(openOptions)
