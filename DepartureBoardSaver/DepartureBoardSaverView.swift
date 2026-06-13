@@ -23,6 +23,15 @@ final class DepartureBoardSaverView: ScreenSaverView {
     private var showStationInClock: Bool = true
     private var useMetalRendering: Bool = true
 
+    // Post-Sonoma legacyScreenSaver workaround state. Internal (not private) so the
+    // logic in DepartureBoardSaverView+LegacyScreenSaver.swift can reach it.
+    var actualIsPreview: Bool = false
+    var isGhostInstance: Bool = false
+    var isAnimationStarted: Bool = false
+    // nonisolated(unsafe): only written during init and read in deinit.
+    nonisolated(unsafe) var willStopObserver: NSObjectProtocol?
+    var lastSystemSettingsCheck = Date()
+
     // Metal renderer (dot matrix mode only; nil if Metal is unavailable or disabled).
     private var metalRenderer: DotMatrixMetalRenderer?
     private var metalLayer: CAMetalLayer?
@@ -40,8 +49,17 @@ final class DepartureBoardSaverView: ScreenSaverView {
         let bundle = Bundle(for: DepartureBoardSaverView.self)
         self.board = DepartureBoard(bundle: bundle)
         (self.offscreenRep, self.offscreenImage) = Self.makeOffscreen()
-        super.init(frame: frame, isPreview: isPreview)
+
+        let preview = Self.resolveIsPreview(isPreview)
+        actualIsPreview = preview
+
+        super.init(frame: frame, isPreview: preview)
         animationTimeInterval = 1.0 / 30.0
+
+        isGhostInstance = detectGhostInstance(frame: frame)
+        if isGhostInstance { return }
+
+        registerWillStopObserverIfNeeded()
     }
 
     required init?(coder: NSCoder) {
@@ -51,6 +69,13 @@ final class DepartureBoardSaverView: ScreenSaverView {
         (self.offscreenRep, self.offscreenImage) = Self.makeOffscreen()
         super.init(coder: coder)
         animationTimeInterval = 1.0 / 30.0
+        registerWillStopObserverIfNeeded()
+    }
+
+    deinit {
+        if let observer = willStopObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
     }
 
     override var isFlipped: Bool { true }
@@ -58,15 +83,27 @@ final class DepartureBoardSaverView: ScreenSaverView {
     // MARK: - Animation lifecycle
 
     override func startAnimation() {
+        guard !isGhostInstance else { return }
+        // legacyScreenSaver can deliver duplicate start/stop calls (Sonoma+).
+        guard !isAnimationStarted else { return }
         super.startAnimation()
+        isAnimationStarted = true
         startRefresh()
     }
 
     override func stopAnimation() {
+        guard isAnimationStarted else { return }
         super.stopAnimation()
+        isAnimationStarted = false
+        cancelRefresh()
+        tearDownMetal()
+    }
+
+    // Internal (not private) so the legacyScreenSaver workaround extension can
+    // stop refreshing without direct access to refreshTask.
+    func cancelRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
-        tearDownMetal()
     }
 
     private func startRefresh() {
@@ -256,6 +293,8 @@ final class DepartureBoardSaverView: ScreenSaverView {
 
     override func animateOneFrame() {
         let now = Date()
+        exitPreviewIfSystemSettingsClosed(now: now)
+
         board.advance(by: now.timeIntervalSince(lastFrameDate))
         lastFrameDate = now
 
