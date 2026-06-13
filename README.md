@@ -87,3 +87,9 @@ Settings are stored in `~/Library/Preferences/justynhenman.DepartureBoardSaver.p
 | `DotMatrixShaders.metal` | Metal shader source |
 | `ConfigureSheetController.swift` | Options sheet presented by Screen Saver preferences |
 | `BoardFonts.swift` | Dot Matrix font registration helpers |
+
+## Credits
+
+- [chrisys/train-departure-display](https://github.com/chrisys/train-departure-display) — the Raspberry Pi departure board project that inspired this screen saver and provided the foundation for the layout and display logic. Huge thanks to everyone involved in that project, without it this wouldn't exist.
+- [DanielHartUK/Dot-Matrix-Typeface](https://github.com/DanielHartUK/Dot-Matrix-Typeface) — the dot-matrix fonts used in this project, painstakingly put together by **DanielHartUK**. A huge thanks for making that resource available!
+- [AerialScreensaver/ScreenSaverMinimal](https://github.com/AerialScreensaver/ScreenSaverMinimal) — post-Sonoma `legacyScreenSaver` workarounds (ghost instance detection, `willStop` observer, preview exit logic) ported from this project. The workaround detailed in this project made the screensaver actually usable on newer MacOS versions
