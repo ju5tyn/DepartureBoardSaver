@@ -46,6 +46,8 @@ Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 6
 
    A **DepartureBoardSaverTestHost** scheme is also included — this is a lightweight macOS app that hosts the screen saver view directly, making it easy to iterate without installing the `.saver` bundle each time.
 
+> **Note:** The Release configuration is set up for notarized distribution and requires a **Developer ID Application** certificate. For local development, use the Debug configuration (the default in Xcode). If you want to build Release without a Developer ID, open the target's Signing & Capabilities tab, switch Code Signing Style back to **Automatic**, and select your personal team.
+
 ## Installation
 
 Double-click `DepartureBoardSaver.saver` — macOS will prompt you to install it into Screen Saver preferences.
