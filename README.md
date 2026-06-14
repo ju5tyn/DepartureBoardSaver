@@ -3,17 +3,21 @@
   DepartureBoardSaver
 </h1>
 
-Built by [Justyn Henman](https://github.com/ju5tyn).
+Built by [Justyn Henman](https://justynhenman.com).
 
+![macOS](https://img.shields.io/badge/macOS-14%2B-lightgrey?style=flat)
+![Swift](https://img.shields.io/badge/Swift-6.0-orange?style=flat)
+![GitHub release](https://img.shields.io/github/v/release/justynhenman/DepartureBoardSaver)
 
-<p align="center">
-  <img src="Assets/TestHostScreenshot.png" alt="DepartureBoardSaver screenshot" width="920">
-</p>
-
+[![Donate](https://img.shields.io/badge/Donate-%E2%9D%A4-green?style=for-the-badge)](https://ko-fi.com/justynhenman)
 
 This project is a macOS screen saver that displays a real-time UK train departure board! It is modelled on the classic dot-matrix boards found at British railway stations. Inspired and derived from [chrisys/train-departure-display](https://github.com/chrisys/train-departure-display).
 
 Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 60 seconds.
+
+<p align="center">
+  <img src="Assets/TestHostScreenshot.png" alt="DepartureBoardSaver screenshot" width="920">
+</p>
 
 ## Display styles
 

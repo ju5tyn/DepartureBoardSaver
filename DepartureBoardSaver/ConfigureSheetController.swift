@@ -122,6 +122,19 @@ final class ConfigureSheetController: NSObject {
         useMetalCheckbox.frame = NSRect(x: 20, y: 44, width: 420, height: 18)
         content.addSubview(useMetalCheckbox)
 
+        let koFi = NSButton(title: "", target: self, action: #selector(openKoFi))
+        koFi.bezelStyle = .rounded
+        koFi.bezelColor = NSColor(calibratedRed: 1.0, green: 0.37, blue: 0.18, alpha: 1.0)
+        koFi.attributedTitle = NSAttributedString(
+            string: "❤ Donate",
+            attributes: [
+                .foregroundColor: NSColor.white,
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+            ]
+        )
+        koFi.frame = NSRect(x: 20, y: 8, width: 100, height: 32)
+        content.addSubview(koFi)
+
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
         cancel.bezelStyle = .rounded
         cancel.frame = NSRect(x: 260, y: 8, width: 80, height: 32)
@@ -155,6 +168,10 @@ final class ConfigureSheetController: NSObject {
         cfg.save()
         onSave?(cfg)
         endSheet()
+    }
+
+    @objc private func openKoFi() {
+        NSWorkspace.shared.open(URL(string: "https://ko-fi.com/justynhenman")!)
     }
 
     @objc private func cancel() {
