@@ -7,7 +7,7 @@ Built by [Justyn Henman](https://justynhenman.com).
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-lightgrey?style=flat)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?style=flat)
-![GitHub release](https://img.shields.io/github/v/release/justynhenman/DepartureBoardSaver)
+[![GitHub release](https://img.shields.io/github/v/release/justynhenman/DepartureBoardSaver?style=flat)](https://github.com/justynhenman/DepartureBoardSaver/releases/latest)
 
 [![Support](https://img.shields.io/badge/Support-%E2%9D%A4-red?style=flat)](https://ko-fi.com/justynhenman)
 
@@ -27,13 +27,27 @@ Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 6
 | **OLED** | Amber on black, teletext style [NO GPU ACCELERATION] |
 | **LCD** | White text on dark navy [NO GPU ACCELERATION] |
 
-## Requirements
+## Installation
 
-- macOS 14 Sonoma or later
-- Xcode 16 or later
-- A free National Rail Darwin API key — register at [realtime trains](https://realtime.nationalrail.co.uk/OpenLDBWSRegistration/)
+Download the latest release from the [Releases page](https://github.com/justynhenman/DepartureBoardSaver/releases/latest) and unzip it. Double-click `DepartureBoardSaver.saver` and macOS will prompt you to install it.
 
-## Building
+Alternatively, copy it manually:
+
+```sh
+# current user only
+cp -R DepartureBoardSaver.saver ~/Library/Screen\ Savers/
+
+# all users (requires admin)
+sudo cp -R DepartureBoardSaver.saver /Library/Screen\ Savers/
+```
+
+Then open **System Settings → Wallpaper**, click **Screen Saver**, scroll to the bottom to 'other', select **DepartureBoardSaver**, and click **Options** to enter your API key and station CRS code (e.g. `PAD` for London Paddington).
+
+You'll need a free National Rail Darwin API key — register at [realtime trains](https://realtime.nationalrail.co.uk/OpenLDBWSRegistration/).
+
+## Building from Source
+
+**Requirements:** macOS 14 Sonoma or later, Xcode 16 or later.
 
 1. Clone the repository:
    ```sh
@@ -48,25 +62,9 @@ Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 6
 
 3. Select the **DepartureBoardSaver** scheme and build (`⌘B`). The compiled `.saver` bundle lands in `Products/DepartureBoardSaver.saver`.
 
-   A **DepartureBoardSaverTestHost** scheme is also included — this is a lightweight macOS app that hosts the screen saver view directly, making it easy to iterate without installing the `.saver` bundle each time.
+   A **DepartureBoardSaverTestHost** scheme is also included — a lightweight macOS app that hosts the screen saver view directly, making it easy to iterate without installing the `.saver` bundle each time.
 
-> **Note:** The Release configuration is set up for notarized distribution and requires a **Developer ID Application** certificate. For local development, use the Debug configuration (the default in Xcode). If you want to build Release without a Developer ID, open the target's Signing & Capabilities tab, switch Code Signing Style back to **Automatic**, and select your personal team.
-
-## Installation
-
-Double-click `DepartureBoardSaver.saver` — macOS will prompt you to install it into Screen Saver preferences.
-
-Alternatively, you can copy it manually:
-
-```sh
-# current user only
-cp -R Products/DepartureBoardSaver.saver ~/Library/Screen\ Savers/
-
-# all users (requires admin)
-sudo cp -R Products/DepartureBoardSaver.saver /Library/Screen\ Savers/
-```
-
-Then open **System Settings → Wallpaper**, click **Screen Saver**, scroll to the bottom to 'other', select **DepartureBoardSaver**, and click **Options** to enter your API key and station CRS code (e.g. `PAD` for London Paddington).
+> **Note:** The Release configuration requires a **Developer ID Application** certificate for notarized distribution. For local development, use the Debug configuration (the default in Xcode). To build Release without a Developer ID, open the target's Signing & Capabilities tab, switch Code Signing Style to **Automatic**, and select your personal team.
 
 ## Configuration
 
