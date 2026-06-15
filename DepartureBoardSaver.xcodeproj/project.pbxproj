@@ -455,6 +455,7 @@
 				CODE_SIGN_ENTITLEMENTS = DepartureBoardSaver/DepartureBoardSaver.entitlements;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KR9D699PKJ;
