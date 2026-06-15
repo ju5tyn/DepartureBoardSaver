@@ -126,7 +126,7 @@ final class ConfigureSheetController: NSObject {
         koFi.bezelStyle = .rounded
         koFi.bezelColor = NSColor(calibratedRed: 1.0, green: 0.37, blue: 0.18, alpha: 1.0)
         koFi.attributedTitle = NSAttributedString(
-            string: "❤ Donate",
+            string: "❤ Support",
             attributes: [
                 .foregroundColor: NSColor.white,
                 .font: NSFont.systemFont(ofSize: 13, weight: .medium)

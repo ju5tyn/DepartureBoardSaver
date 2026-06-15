@@ -9,7 +9,7 @@ Built by [Justyn Henman](https://justynhenman.com).
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?style=flat)
 ![GitHub release](https://img.shields.io/github/v/release/justynhenman/DepartureBoardSaver)
 
-[![Donate](https://img.shields.io/badge/Donate-%E2%9D%A4-green?style=for-the-badge)](https://ko-fi.com/justynhenman)
+[![Support](https://img.shields.io/badge/Support-%E2%9D%A4-red?style=flat)](https://ko-fi.com/justynhenman)
 
 This project is a macOS screen saver that displays a real-time UK train departure board! It is modelled on the classic dot-matrix boards found at British railway stations. Inspired and derived from [chrisys/train-departure-display](https://github.com/chrisys/train-departure-display).
 
