@@ -7,7 +7,7 @@ Built by [Justyn Henman](https://justynhenman.com).
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-lightgrey?style=flat)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?style=flat)
-[![GitHub release](https://img.shields.io/github/v/release/justynhenman/DepartureBoardSaver?style=flat)](https://github.com/justynhenman/DepartureBoardSaver/releases/latest)
+[![GitHub release](https://img.shields.io/github/v/release/ju5tyn/DepartureBoardSaver?style=flat)](https://github.com/ju5tyn/DepartureBoardSaver/releases/latest)
 
 [![Support](https://img.shields.io/badge/Support-%E2%9D%A4-red?style=flat)](https://ko-fi.com/justynhenman)
 
