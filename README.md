@@ -29,7 +29,7 @@ Departure data is fetched live from the National Rail OpenLDBWS SOAP API every 6
 
 ## Installation
 
-Download the latest release from the [Releases page](https://github.com/justynhenman/DepartureBoardSaver/releases/latest) and unzip it. Double-click `DepartureBoardSaver.saver` and macOS will prompt you to install it.
+Download the latest release from the [Releases page](https://github.com/ju5tyn/DepartureBoardSaver/releases/latest) and unzip it. Double-click `DepartureBoardSaver.saver` and macOS will prompt you to install it.
 
 Alternatively, copy it manually:
 
@@ -51,7 +51,7 @@ You'll need a free National Rail Darwin API key — register at [realtime trains
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/justynhenman/DepartureBoardSaver.git
+   git clone https://github.com/ju5tyn/DepartureBoardSaver.git
    cd DepartureBoardSaver
    ```
 
