@@ -34,7 +34,7 @@ struct Departure: Sendable {
 enum BoardState {
     case notConfigured
     case loading(stationName: String)
-    case error(stationName: String, message: String)
+    case error(stationName: String, message: String, retryAt: Date)
     case live(stationName: String, departures: [Departure])
 }
 
@@ -50,6 +50,9 @@ final class DepartureBoard {
 
     static let clockStartRow: Int = 4 * rowHeight
     static let boardHeight:   Int = clockStartRow + clockHeight
+
+    private static let setupInstructions =
+        "System Settings  >  Wallpaper  >  Screen Saver  >  scroll down to Other  >  DepartureBoardSaver  >  Options"
 
     private let fonts: BoardFonts
     var displayStyle: DisplayStyle = .oled
@@ -80,6 +83,12 @@ final class DepartureBoard {
     private var scrollPauseRemaining: TimeInterval = 1.5
     private let scrollSpeed: CGFloat = 32
 
+    private var loadingElapsed: TimeInterval = 0
+
+    // 3×3 spinner: phase runs 0..<8, one step per position clockwise
+    private var spinnerPhase: Double = 0
+    private let spinnerSpeed: Double = 8  // positions/second → 1 rev/second
+
     init(bundle: Bundle) {
         self.fonts = BoardFonts(bundle: bundle)
     }
@@ -93,27 +102,47 @@ final class DepartureBoard {
     }
 
     func setLoading(stationName: String) {
+        loadingElapsed = 0
         state = .loading(stationName: stationName)
     }
 
     func setNotConfigured() {
+        scrollX = 0
+        scrollPauseRemaining = 1.5
         state = .notConfigured
     }
 
     func setError(stationName: String, message: String) {
-        state = .error(stationName: stationName, message: message)
+        state = .error(stationName: stationName, message: message, retryAt: Date().addingTimeInterval(15))
     }
 
     // MARK: - Animation tick
 
     func advance(by delta: TimeInterval) {
-        guard case .live(_, let deps) = state, let first = deps.first else { return }
+        if case .loading = state {
+            loadingElapsed += delta
+            if loadingElapsed >= 1.0 {
+                spinnerPhase = (spinnerPhase + delta * spinnerSpeed).truncatingRemainder(dividingBy: 8)
+            }
+        }
+
+        let scrollText: String?
+        switch state {
+        case .live(_, let deps) where deps.first != nil:
+            scrollText = callingAtText(for: deps.first!)
+        case .notConfigured:
+            scrollText = Self.setupInstructions
+        default:
+            scrollText = nil
+        }
+        guard let text = scrollText else { return }
+
         if scrollPauseRemaining > 0 {
             scrollPauseRemaining -= delta
             return
         }
         scrollX -= CGFloat(delta) * scrollSpeed
-        let tw = textSize(callingAtText(for: first), font: fonts.regular).width
+        let tw = textSize(text, font: fonts.regular).width
         if scrollX < -tw - 12 {
             scrollX = 0
             scrollPauseRemaining = 1.5
@@ -128,13 +157,14 @@ final class DepartureBoard {
 
         switch state {
         case .notConfigured:
-            drawCentred("Open Screen Saver Options", sub: "to enter your OpenLDBWS API key.", in: rect)
+            drawNotConfigured(in: rect)
         case .loading(let name):
-            drawBlank(stationName: "Fetching \(name)...", dots: true, in: rect)
-        case .error(let name, let msg):
-            drawCentred("\(name): \(msg)", sub: "Retrying in 60s", in: rect)
+            drawLoading(stationName: name, in: rect)
+        case .error(_, let msg, let retryAt):
+            let secs = max(0, Int(ceil(retryAt.timeIntervalSinceNow)))
+            drawCentred(msg, sub: "Retry in \(secs)s", in: rect)
         case .live(let name, let deps) where deps.isEmpty:
-            drawBlank(stationName: name, dots: false, in: rect)
+            drawBlank(stationName: name, spinner: false, in: rect)
         case .live(let name, let deps):
             drawSignage(deps, stationName: name, in: rect)
         }
@@ -142,18 +172,70 @@ final class DepartureBoard {
 
     // MARK: - Screen variants
 
-    private func drawBlank(stationName: String, dots: Bool, in rect: CGRect) {
+    private func drawBlank(stationName: String, spinner: Bool, in rect: CGRect) {
         let w = rect.width
         let rh = CGFloat(Self.rowHeight)
         centredText("Welcome to", font: fonts.bold, y: rowPad, width: w)
         centredText(stationName, font: fonts.bold, y: rh + rowPad, width: w)
-        if dots { drawText(".  .  .", font: fonts.bold, at: CGPoint(x: 0, y: rh * 2 + rowPad)) }
+        if spinner { drawSpinner(centredIn: CGRect(x: 0, y: rh * 2, width: w, height: rh)) }
         drawClock(atY: CGFloat(Self.clockStartRow), width: w, stationName: nil)
     }
 
+    // 3×3 grid spinner: 8 edge pixels rotate clockwise, 3 lit at a time (head + 2 trailing).
+    private func drawSpinner(centredIn rect: CGRect) {
+        drawSpinnerAt(cx: Int(rect.midX), cy: Int(rect.midY))
+    }
+
+    private func drawSpinnerAt(cx: Int, cy: Int) {
+        // Clockwise offsets from centre: TL, TC, TR, MR, BR, BC, BL, ML
+        let offsets: [(Int, Int)] = [(-1,-1),(0,-1),( 1,-1),
+                                     ( 1, 0),       ( 1, 1),
+                                     ( 0, 1),(-1,1),(-1, 0)]
+        let head = Int(spinnerPhase) % 8
+        let lit: Set<Int> = [head, (head + 7) % 8, (head + 6) % 8]
+        // Each dot is 2×2 px; step between dot origins = 3 (2 px dot + 1 px gap).
+        // Top-left of dot at (dx,dy): (cx - 1 + dx*3, cy - 1 + dy*3).
+        // Total spinner extent: 8×8 px centred on (cx, cy).
+        foregroundColor.setFill()
+        for (i, (dx, dy)) in offsets.enumerated() where lit.contains(i) {
+            NSRect(x: CGFloat(cx - 1 + dx * 3), y: CGFloat(cy - 1 + dy * 3), width: 2, height: 2).fill()
+        }
+    }
+
+    // Not configured: rows 2+3 centred, row 4 scrolling setup instructions
+    private func drawNotConfigured(in rect: CGRect) {
+        let rh = CGFloat(Self.rowHeight)
+        let w  = rect.width
+        centredText("Open Screen Saver Options", font: fonts.regular, y: rh + rowPad,     width: w)
+        centredText("to enter your API key",     font: fonts.regular, y: rh * 2 + rowPad, width: w)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: NSRect(x: 0, y: rh * 3, width: w, height: rh)).addClip()
+        drawText(Self.setupInstructions, font: fonts.regular, at: CGPoint(x: scrollX, y: rh * 3 + rowPad))
+        NSGraphicsContext.restoreGraphicsState()
+        drawClock(atY: CGFloat(Self.clockStartRow), width: w, stationName: nil)
+    }
+
+    // Loading: "Loading STN [spinner]" on row 2, regular font
+    private func drawLoading(stationName: String, in rect: CGRect) {
+        let rh  = CGFloat(Self.rowHeight)
+        let text = "Loading \(stationName)"
+        let tw   = textSize(text, font: fonts.regular).width
+        let gap: CGFloat = 5
+        let spinW: CGFloat = 8   // 3 dots × 2 px + 2 gaps × 1 px = 8 px wide
+        if loadingElapsed >= 1.0 {
+            let x = (rect.width - tw - gap - spinW) / 2
+            drawText(text, font: fonts.regular, at: CGPoint(x: x, y: rh + rowPad))
+            drawSpinnerAt(cx: Int(x + tw + gap + spinW / 2), cy: Int(rh + rh / 2))
+        }
+        drawClock(atY: CGFloat(Self.clockStartRow), width: rect.width, stationName: nil)
+    }
+
+    // Error / not-configured: two lines centred on rows 2 and 3, regular font
     private func drawCentred(_ line1: String, sub line2: String, in rect: CGRect) {
-        centredText(line1, font: fonts.bold, y: 16, width: rect.width)
-        centredText(line2, font: fonts.regular, y: 30, width: rect.width)
+        let rh = CGFloat(Self.rowHeight)
+        centredText(line1, font: fonts.regular, y: rh + rowPad,       width: rect.width)
+        centredText(line2, font: fonts.regular, y: rh * 2 + rowPad,   width: rect.width)
+        drawClock(atY: CGFloat(Self.clockStartRow), width: rect.width, stationName: nil)
     }
 
     private func drawSignage(_ deps: [Departure], stationName: String, in rect: CGRect) {
