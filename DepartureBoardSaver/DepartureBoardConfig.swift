@@ -53,6 +53,6 @@ struct DepartureBoardConfig {
     }
 
     var isReady: Bool {
-        !apiKey.isEmpty && station.count == 3
+        station.count == 3
     }
 }

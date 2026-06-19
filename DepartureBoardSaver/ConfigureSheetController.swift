@@ -149,29 +149,43 @@ final class ConfigureSheetController: NSObject {
         let getApiKeyButton = NSButton(title: "Get free key ↗", target: self, action: #selector(openAPIKeyPage))
         getApiKeyButton.bezelStyle = .glass
         getApiKeyButton.controlSize = .small
-        getApiKeyButton.isEnabled = false // Disable button until we have set up with the new API
         let btnW: CGFloat = 115
         getApiKeyButton.frame = NSRect(x: size.width - rx - btnW, y: ay + 2, width: btnW, height: 18)
         view.addSubview(getApiKeyButton)
 
         let fx = lx + labelW + 8
         apiKeyField.frame = NSRect(x: fx, y: ay, width: getApiKeyButton.frame.minX - fx - 8, height: 22)
-        apiKeyField.placeholderString = "Paste token here"
+        apiKeyField.placeholderString = "Optional — leave blank to use shared service"
         view.addSubview(apiKeyField)
 
+        // API key hint
+        let apiHint = smallLabel(
+            "Leave blank to use the built-in shared service, or paste your own key for dedicated access.",
+            x: lx, y: ay - 4 - 14, width: rw
+        )
+        view.addSubview(apiHint)
+
         // Station row
-        let sy = ay - 16 - 22
+        let sy = ay - 4 - 14 - 8 - 22
         view.addSubview(label("Station:", width: labelW, x: lx, y: sy))
         stationField.frame = NSRect(x: fx, y: sy, width: 65, height: 22)
         stationField.placeholderString = "PAD"
         view.addSubview(stationField)
 
         // Station hint
+        let stationHintY = sy - 8 - 14
         let hint = smallLabel(
             "Three-letter code: PAD = Paddington · KGX = King's Cross · EDB = Edinburgh",
-            x: lx, y: sy - 8 - 14, width: rw
+            x: lx, y: stationHintY, width: rw
         )
         view.addSubview(hint)
+
+        // Attribution
+        let attribution = smallLabel(
+            "Train data provided by Rail Delivery Group (raildata.org.uk).",
+            x: lx, y: stationHintY - 20 - 14, width: rw
+        )
+        view.addSubview(attribution)
 
         return view
     }
@@ -312,9 +326,6 @@ final class ConfigureSheetController: NSObject {
         NSWorkspace.shared.open(URL(string: "https://ko-fi.com/justynhenman")!)
     }
     
-    /// Points to new raildata API page. Currently not wired up.
-    /// Ideally in next PR we will instead default it to my API in a cloudflare worker
-    /// With API key being totally optional
     @objc private func openAPIKeyPage() {
         NSWorkspace.shared.open(URL(string: "https://raildata.org.uk")!)
     }

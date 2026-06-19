@@ -2,8 +2,12 @@
 //  DepartureService.swift
 //  DepartureBoardSaver
 //
-//  Swift port of trains.py — talks to the OpenLDBWS SOAP endpoint and
-//  parses out the fields we need for the dot-matrix board.
+//  Talks to the raildata.org.uk departure board REST API and maps the JSON
+//  response into the fields needed by the dot-matrix board.
+//
+//  If no personal API key is configured, requests are routed through a shared
+//  Cloudflare Worker that injects the key server-side — so users get live data
+//  out of the box without needing to register.
 //
 
 import Foundation
@@ -22,8 +26,11 @@ actor DepartureService {
 
     private let apiKey: String
     private let crs: String
-    private let endpoint = URL(string: "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb11.asmx")!
     private let session: URLSession
+
+    // URL of the shared Cloudflare Worker proxy.
+    // Update this after deploying the worker from the cloudflare-worker/ directory.
+    static let workerBaseURL = "https://departure-board-api.justynhenman.com"
 
     init(apiKey: String, crs: String) {
         self.apiKey = apiKey
@@ -34,169 +41,114 @@ actor DepartureService {
     }
 
     func fetch() async throws -> DepartureResult {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("text/xml", forHTTPHeaderField: "Content-Type")
-        request.httpBody = soapEnvelope().data(using: .utf8)
+        var request = URLRequest(url: makeURL())
+        request.httpMethod = "GET"
+        if !apiKey.isEmpty {
+            request.setValue(apiKey, forHTTPHeaderField: "x-apikey")
+        }
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw DepartureServiceError.badStatus(http.statusCode)
         }
 
-        let doc = try XMLDocument(data: data)
-        return try Self.parse(doc)
+        return try Self.parse(data)
     }
 
-    private func soapEnvelope() -> String {
-        let escapedKey = Self.escapeXML(apiKey)
-        let escapedCrs = Self.escapeXML(crs)
-        return """
-        <x:Envelope xmlns:x="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ldb="http://thalesgroup.com/RTTI/2017-10-01/ldb/" xmlns:typ4="http://thalesgroup.com/RTTI/2013-11-28/Token/types">
-        <x:Header>
-        <typ4:AccessToken><typ4:TokenValue>\(escapedKey)</typ4:TokenValue></typ4:AccessToken>
-        </x:Header>
-        <x:Body>
-        <ldb:GetDepBoardWithDetailsRequest>
-        <ldb:numRows>10</ldb:numRows>
-        <ldb:crs>\(escapedCrs)</ldb:crs>
-        <ldb:timeOffset>0</ldb:timeOffset>
-        <ldb:filterType>to</ldb:filterType>
-        <ldb:timeWindow>120</ldb:timeWindow>
-        </ldb:GetDepBoardWithDetailsRequest>
-        </x:Body>
-        </x:Envelope>
-        """
-    }
-
-    private static func escapeXML(_ value: String) -> String {
-        var v = value
-        v = v.replacingOccurrences(of: "&", with: "&amp;")
-        v = v.replacingOccurrences(of: "<", with: "&lt;")
-        v = v.replacingOccurrences(of: ">", with: "&gt;")
-        v = v.replacingOccurrences(of: "\"", with: "&quot;")
-        v = v.replacingOccurrences(of: "'", with: "&apos;")
-        return v
-    }
-
-    // MARK: - XML parsing
-
-    private static func parse(_ doc: XMLDocument) throws -> DepartureResult {
-        // SOAP fault check
-        if let fault = firstNode(doc.rootElement(), localName: "faultstring"),
-           let msg = fault.stringValue, !msg.isEmpty {
-            throw NSError(domain: "OpenLDBWS", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+    private func makeURL() -> URL {
+        let encoded = crs.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? crs
+        if apiKey.isEmpty {
+            return URL(string: "\(Self.workerBaseURL)/GetDepBoardWithDetails/\(encoded)?numRows=10")!
+        } else {
+            return URL(string: "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepBoardWithDetails/\(encoded)?numRows=10")!
         }
+    }
 
-        guard let result = firstNode(doc.rootElement(), localName: "GetStationBoardResult") else {
+    // MARK: - JSON parsing
+
+    private static func parse(_ data: Data) throws -> DepartureResult {
+        let response: APIResponse
+        do {
+            response = try JSONDecoder().decode(APIResponse.self, from: data)
+        } catch {
             throw DepartureServiceError.parseFailure
         }
 
-        let stationName = firstNode(result, localName: "locationName")?.stringValue ?? ""
-
-        let serviceNodes = allNodes(result, localName: "service")
         var departures: [Departure] = []
 
-        for node in serviceNodes {
-            let scheduled = firstNode(node, localName: "std")?.stringValue ?? ""
-            let expected = firstNode(node, localName: "etd")?.stringValue ?? ""
-            let platform = firstNode(node, localName: "platform")?.stringValue ?? ""
+        for service in response.trainServices ?? [] {
+            let scheduled = service.std ?? ""
+            let expected  = service.etd ?? ""
+            let platform  = service.platform ?? ""
 
-            let destinationName = destinationName(in: node)
-            let callingAt = callingPoints(in: node)
-            let status = mapStatus(expected: expected, scheduled: scheduled)
+            let destination = service.destination
+                .map { stripParens($0.locationName) }
+                .joined(separator: " & ")
+
+            let callingAt = service.subsequentCallingPoints?
+                .flatMap { $0.callingPoint }
+                .map { stripParens($0.locationName) } ?? []
+
+            let status = mapStatus(
+                expected: expected,
+                scheduled: scheduled,
+                isCancelled: service.isCancelled
+            )
 
             departures.append(Departure(
                 scheduled: scheduled,
-                destination: stripParens(destinationName),
+                destination: destination,
                 platform: platform,
                 status: status,
                 callingAt: callingAt
             ))
         }
 
-        return DepartureResult(stationName: stationName, departures: departures)
+        return DepartureResult(stationName: response.locationName, departures: departures)
     }
 
-    private static func destinationName(in service: XMLNode) -> String {
-        let destination = firstNode(service, localName: "destination")
-        let locations = childElements(destination, localName: "location")
-        let names = locations.compactMap { firstNode($0, localName: "locationName")?.stringValue }
-        if names.isEmpty { return "" }
-        return names.map(stripParens).joined(separator: " & ")
-    }
-
-    private static func callingPoints(in service: XMLNode) -> [String] {
-        guard let subsequent = firstNode(service, localName: "subsequentCallingPoints") else {
-            return []
-        }
-        // There may be multiple callingPointList entries (when a service splits).
-        let lists = childElements(subsequent, localName: "callingPointList")
-        var collected: [String] = []
-        for list in lists {
-            let points = childElements(list, localName: "callingPoint")
-            for p in points {
-                if let n = firstNode(p, localName: "locationName")?.stringValue {
-                    collected.append(stripParens(n))
-                }
-            }
-        }
-        return collected
-    }
-
-    private static func mapStatus(expected: String, scheduled: String) -> DepartureStatus {
+    private static func mapStatus(expected: String, scheduled: String, isCancelled: Bool) -> DepartureStatus {
+        if isCancelled { return .cancelled }
         switch expected {
-        case "On time": return .onTime
-        case "Cancelled": return .cancelled
-        case "Delayed": return .delayed
-        case "": return .onTime
+        case "On time", "": return .onTime
+        case "Cancelled":   return .cancelled
+        case "Delayed":     return .delayed
         default:
-            // "13:42" style — show as Exp HH:MM unless it equals scheduled
             if expected == scheduled { return .onTime }
             return .expected(expected)
         }
     }
 
     private static func stripParens(_ s: String) -> String {
-        // Mirrors removeBrackets() in trains.py — drops " (CIE)" style suffixes.
-        if let r = s.range(of: " (") {
-            return String(s[..<r.lowerBound])
-        }
+        if let r = s.range(of: " (") { return String(s[..<r.lowerBound]) }
         return s
     }
 
-    // MARK: - XMLNode helpers (local-name matching, namespace-agnostic)
+    // MARK: - Codable models
 
-    private static func firstNode(_ node: XMLNode?, localName: String) -> XMLNode? {
-        guard let node else { return nil }
-        if let element = node as? XMLElement, element.localName == localName {
-            return element
-        }
-        guard let children = node.children else { return nil }
-        for child in children {
-            if let match = firstNode(child, localName: localName) {
-                return match
-            }
-        }
-        return nil
+    private struct APIResponse: Decodable {
+        let locationName: String
+        let trainServices: [ServiceItem]?
     }
 
-    private static func allNodes(_ node: XMLNode, localName: String) -> [XMLElement] {
-        var matches: [XMLElement] = []
-        if let element = node as? XMLElement, element.localName == localName {
-            matches.append(element)
-        }
-        for child in node.children ?? [] {
-            matches.append(contentsOf: allNodes(child, localName: localName))
-        }
-        return matches
+    private struct ServiceItem: Decodable {
+        let std: String?
+        let etd: String?
+        let platform: String?
+        let destination: [LocationItem]
+        let isCancelled: Bool
+        let subsequentCallingPoints: [CallingPointList]?
     }
 
-    private static func childElements(_ node: XMLNode?, localName: String) -> [XMLElement] {
-        guard let children = node?.children else { return [] }
-        return children.compactMap { child in
-            guard let element = child as? XMLElement, element.localName == localName else { return nil }
-            return element
-        }
+    private struct LocationItem: Decodable {
+        let locationName: String
+    }
+
+    private struct CallingPointList: Decodable {
+        let callingPoint: [CallingPoint]
+    }
+
+    private struct CallingPoint: Decodable {
+        let locationName: String
     }
 }
