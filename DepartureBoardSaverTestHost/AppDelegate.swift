@@ -11,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
     private let optionsID  = NSToolbarItem.Identifier("options")
     private let previewID  = NSToolbarItem.Identifier("preview")
     private let restartID  = NSToolbarItem.Identifier("restart")
+    private let stateID    = NSToolbarItem.Identifier("state")
 
     // MARK: - Launch
 
@@ -65,10 +66,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
         window.contentView = saverView
         window.title = isPreview ? "DepartureBoardSaver — System Settings Preview" : "DepartureBoardSaver Debug - Main Screensaver"
 
-        // Keep the Options button state in sync
         window.toolbar?.items
             .first(where: { $0.itemIdentifier == optionsID })?
             .isEnabled = saverView.hasConfigureSheet
+
+        // Reset the state popup to "Live (auto)" after a rebuild
+        window.toolbar?.items
+            .first(where: { $0.itemIdentifier == stateID })
+            .flatMap { $0.view as? NSPopUpButton }?
+            .selectItem(at: 0)
     }
 
     // MARK: - Actions
@@ -82,10 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
             return
         }
 
-        // Present exactly as System Settings does — modal sheet on the window.
         window.beginSheet(sheet) { [weak self] _ in
-            // Sheet dismissed (user hit OK or Cancel inside the saver's own sheet).
-            // Rebuild so any changed UserDefaults/preferences are picked up.
             self?.buildSaverView()
         }
     }
@@ -99,14 +102,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
         buildSaverView()
     }
 
+    @objc private func statePopupChanged(_ sender: NSPopUpButton) {
+        let selName: String
+        switch sender.indexOfSelectedItem {
+        case 0:  return  // "Live (auto)" — live data, don't inject anything
+        case 1:  selName = "testSetStateLive3"
+        case 2:  selName = "testSetStateLive2"
+        case 3:  selName = "testSetStateLive1"
+        case 4:  selName = "testSetStateLive0"
+        case 5:  selName = "testSetStateLoading"
+        case 6:  selName = "testSetStateError"
+        case 7:  selName = "testSetStateNotConfigured"
+        default: return
+        }
+        let sel = NSSelectorFromString(selName)
+        if saverView.responds(to: sel) {
+            saverView.perform(sel)
+        }
+    }
+
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, previewID, .space, restartID, optionsID]
+        [stateID, .flexibleSpace, previewID, .space, restartID, optionsID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [previewID, optionsID, restartID, .flexibleSpace, .space]
+        [stateID, previewID, optionsID, restartID, .flexibleSpace, .space]
     }
 
     func toolbar(
@@ -116,6 +138,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
     ) -> NSToolbarItem? {
         switch id {
 
+        case stateID:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = "Board State"
+            item.toolTip = "Simulate a specific board state for testing"
+            let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 180, height: 26), pullsDown: false)
+            popup.addItems(withTitles: [
+                "Live (auto)",
+                "Live — 3 departures",
+                "Live — 2 departures",
+                "Live — 1 departure",
+                "Live — no services",
+                "Loading…",
+                "Error",
+                "Not configured",
+            ])
+            popup.target = self
+            popup.action = #selector(statePopupChanged(_:))
+            item.view = popup
+            return item
+
         case optionsID:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label   = "Options"
@@ -124,7 +166,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
                                    accessibilityDescription: "Options")
             item.target  = self
             item.action  = #selector(openOptions)
-            // Enabled state is set properly in buildSaverView() once the view exists
             return item
 
         case previewID:

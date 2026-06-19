@@ -129,12 +129,12 @@ final class DepartureBoardSaverView: ScreenSaverView {
                         self?.board.apply(result: result)
                     }
                 } catch {
-                    let msg = (error as NSError).localizedDescription
+                    let msg = Self.friendlyMessage(for: error)
                     await MainActor.run { [weak self] in
                         self?.board.setError(stationName: station, message: msg)
                     }
                 }
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: .seconds(15))
             }
         }
     }
@@ -358,6 +358,58 @@ final class DepartureBoardSaverView: ScreenSaverView {
         return sheetController.window
     }
 
+    // MARK: - Test state injection (called by DepartureBoardSaverTestHost via perform(_:))
+
+    @objc func testSetStateNotConfigured() {
+        cancelRefresh()
+        board.setNotConfigured()
+    }
+
+    @objc func testSetStateLoading() {
+        cancelRefresh()
+        board.setLoading(stationName: "PAD")
+    }
+
+    @objc func testSetStateError() {
+        cancelRefresh()
+        board.setError(stationName: "PAD", message: "No Internet Connection")
+    }
+
+    @objc func testSetStateLive0() {
+        cancelRefresh()
+        board.apply(result: DepartureResult(stationName: "London Paddington", departures: []))
+    }
+
+    @objc func testSetStateLive1() {
+        cancelRefresh()
+        board.apply(result: DepartureResult(stationName: "London Paddington", departures: Self.fakeDepartures(count: 1)))
+    }
+
+    @objc func testSetStateLive2() {
+        cancelRefresh()
+        board.apply(result: DepartureResult(stationName: "London Paddington", departures: Self.fakeDepartures(count: 2)))
+    }
+
+    @objc func testSetStateLive3() {
+        cancelRefresh()
+        board.apply(result: DepartureResult(stationName: "London Paddington", departures: Self.fakeDepartures(count: 3)))
+    }
+
+    private static func fakeDepartures(count: Int) -> [Departure] {
+        let all: [Departure] = [
+            Departure(scheduled: "12:30", destination: "London Paddington", platform: "1",
+                      status: .onTime,
+                      callingAt: ["Reading", "Didcot Parkway", "Swindon", "Bristol Parkway"]),
+            Departure(scheduled: "12:45", destination: "Bristol Temple Meads", platform: "2",
+                      status: .expected("12:47"),
+                      callingAt: ["Reading", "Bath Spa"]),
+            Departure(scheduled: "13:00", destination: "Oxford", platform: "3",
+                      status: .cancelled,
+                      callingAt: ["Slough", "Maidenhead"]),
+        ]
+        return Array(all.prefix(count))
+    }
+
     // MARK: - Setup helpers
 
     private static let fontsRegistered: Void = {
@@ -370,6 +422,29 @@ final class DepartureBoardSaverView: ScreenSaverView {
     }()
 
     static func registerEmbeddedFonts() { _ = fontsRegistered }
+
+    private static func friendlyMessage(for error: Error) -> String {
+        let nsErr = error as NSError
+        if nsErr.domain == NSURLErrorDomain {
+            switch nsErr.code {
+            case NSURLErrorNotConnectedToInternet: return "No Internet Connection"
+            case NSURLErrorTimedOut:               return "Request Timed Out"
+            case NSURLErrorNetworkConnectionLost:  return "Connection Lost"
+            case NSURLErrorCannotConnectToHost,
+                 NSURLErrorCannotFindHost:          return "Cannot Reach Server"
+            default: break
+            }
+        }
+        // SOAP fault — the API message is already short and useful ("Invalid Access Token" etc.)
+        if nsErr.domain == "OpenLDBWS" { return nsErr.localizedDescription }
+        if let svcErr = error as? DepartureServiceError {
+            switch svcErr {
+            case .badStatus(let code): return "Server Error (\(code))"
+            case .parseFailure:        return "Data Error"
+            }
+        }
+        return nsErr.localizedDescription
+    }
 
     private static func makeOffscreen() -> (NSBitmapImageRep, NSImage) {
         let rep = NSBitmapImageRep(

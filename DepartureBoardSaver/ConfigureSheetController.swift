@@ -9,8 +9,12 @@ import AppKit
 final class ConfigureSheetController: NSObject {
 
     private(set) lazy var window: NSWindow = makeWindow()
+
+    // Data tab
     private let apiKeyField = NSSecureTextField(frame: .zero)
     private let stationField = NSTextField(frame: .zero)
+
+    // Display tab
     private let paddingSlider = NSSlider(frame: .zero)
     private let paddingValueLabel = NSTextField(labelWithString: "0%")
     private let styleControl = NSSegmentedControl(
@@ -19,14 +23,25 @@ final class ConfigureSheetController: NSObject {
         target: nil,
         action: nil
     )
-    private let showStationCheckbox = NSButton(checkboxWithTitle: "Show station code in clock corner", target: nil, action: nil)
-    private let useMetalCheckbox = NSButton(checkboxWithTitle: "Use GPU (Metal) rendering for Dot Matrix mode", target: nil, action: nil)
+    private let showStationCheckbox = NSButton(
+        checkboxWithTitle: "Show station code in clock corner",
+        target: nil, action: nil
+    )
+    private let useMetalCheckbox = NSButton(
+        checkboxWithTitle: "Use GPU (Metal) rendering for Dot Matrix mode",
+        target: nil, action: nil
+    )
+
+    private var advancedContainer: NSView?
+    private var advancedChevronView: NSImageView?
+
     private var onSave: ((DepartureBoardConfig) -> Void)?
 
     func present(onSave: @escaping (DepartureBoardConfig) -> Void) {
+        _ = window  // ensure makeWindow() has run so slider min/max are set before assigning doubleValue
         self.onSave = onSave
         let cfg = DepartureBoardConfig.load()
-        apiKeyField.stringValue = cfg.apiKey
+        apiKeyField.stringValue  = cfg.apiKey
         stationField.stringValue = cfg.station
         paddingSlider.doubleValue = cfg.sidePaddingPct
         paddingValueLabel.stringValue = "\(Int(cfg.sidePaddingPct))%"
@@ -36,126 +51,245 @@ final class ConfigureSheetController: NSObject {
         case .lcd:       styleControl.selectedSegment = 2
         }
         showStationCheckbox.state = cfg.showStationInClock ? .on : .off
-        useMetalCheckbox.state = cfg.useMetalRendering ? .on : .off
+        useMetalCheckbox.state    = cfg.useMetalRendering  ? .on : .off
     }
 
+    // MARK: - Window construction
+
     private func makeWindow() -> NSWindow {
-        let contentSize = NSSize(width: 460, height: 354)
+        let W: CGFloat = 480
+        let H: CGFloat = 360
+
         let win = NSWindow(
-            contentRect: NSRect(origin: .zero, size: contentSize),
+            contentRect: NSRect(origin: .zero, size: NSSize(width: W, height: H)),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        win.title = "DepartureBoard"
+        win.title = "DepartureBoardSaver Options"
         win.isReleasedWhenClosed = false
 
-        let content = NSView(frame: NSRect(origin: .zero, size: contentSize))
-        win.contentView = content
+        let root = NSView(frame: NSRect(origin: .zero, size: NSSize(width: W, height: H)))
+        win.contentView = root
 
-        let title = NSTextField(labelWithString: "Departure Board Settings")
-        title.font = NSFont.boldSystemFont(ofSize: 14)
-        title.frame = NSRect(x: 20, y: 314, width: 420, height: 20)
-        content.addSubview(title)
+        // Title strip at top
+        let titleLabel = NSTextField(labelWithString: "DepartureBoardSaver Options")
+        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.alignment = .center
+        titleLabel.frame = NSRect(x: 0, y: H - 37, width: W, height: 30) // Fake window title
+        root.addSubview(titleLabel)
 
-        let apiLabel = NSTextField(labelWithString: "OpenLDBWS API key:")
-        apiLabel.frame = NSRect(x: 20, y: 274, width: 160, height: 20)
-        content.addSubview(apiLabel)
+        let titleSep = NSBox(frame: NSRect(x: 0, y: H - 31, width: W, height: 1))
+        titleSep.boxType = .separator
+        root.addSubview(titleSep)
 
-        apiKeyField.frame = NSRect(x: 180, y: 272, width: 260, height: 22)
-        apiKeyField.placeholderString = "Token from National Rail OpenLDBWS"
-        content.addSubview(apiKeyField)
+        // Bottom bar — Support always visible, Cancel + Save at right
+        let koFi = NSButton(title: "", target: self, action: #selector(openKoFi))
+        koFi.bezelStyle = .push
+        koFi.bezelColor = .systemRed
+        koFi.attributedTitle = NSAttributedString(
+            string: "♥ Support",
+            attributes: [
+                .foregroundColor: NSColor.white,
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+            ]
+        )
+        koFi.frame = NSRect(x: 16, y: 10, width: 105, height: 30)
+        root.addSubview(koFi)
 
-        let stationLabel = NSTextField(labelWithString: "Station CRS code:")
-        stationLabel.frame = NSRect(x: 20, y: 234, width: 160, height: 20)
-        content.addSubview(stationLabel)
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelAction))
+        cancel.bezelStyle = .rounded
+        cancel.frame = NSRect(x: W - 200, y: 10, width: 85, height: 30)
+        root.addSubview(cancel)
 
-        stationField.frame = NSRect(x: 180, y: 232, width: 80, height: 22)
+        let save = NSButton(title: "Save", target: self, action: #selector(saveAction))
+        save.bezelStyle = .rounded
+        save.keyEquivalent = "\r"
+        save.frame = NSRect(x: W - 105, y: 10, width: 85, height: 30)
+        root.addSubview(save)
+
+        let sep = NSBox(frame: NSRect(x: 0, y: 50, width: W, height: 1))
+        sep.boxType = .separator
+        root.addSubview(sep)
+
+        // Tab view fills the space between the bottom bar and title strip
+        let tabView = NSTabView(frame: NSRect(x: 0, y: 51, width: W, height: H - 51 - 31))
+        root.addSubview(tabView)
+
+        let cs = tabView.contentRect.size  // actual content area inside the bezel
+
+        let dataItem = NSTabViewItem(identifier: "data")
+        dataItem.label = "Data"
+        dataItem.view = buildDataTab(cs)
+        tabView.addTabViewItem(dataItem)
+
+        let displayItem = NSTabViewItem(identifier: "display")
+        displayItem.label = "Display"
+        displayItem.view = buildDisplayTab(cs)
+        tabView.addTabViewItem(displayItem)
+
+        return win
+    }
+
+    // MARK: - Tab content builders
+
+    private func buildDataTab(_ size: NSSize) -> NSView {
+        let view = NSView(frame: NSRect(origin: .zero, size: size))
+        let h = size.height
+        let lx: CGFloat = 16   // left margin
+        let rx: CGFloat = 16   // right margin
+        let rw = size.width - lx - rx  // usable row width
+        let labelW: CGFloat = 80
+
+        // API Key row
+        let ay = h - 20 - 22
+        let apiLabel = label("API key:", width: labelW, x: lx, y: ay)
+        view.addSubview(apiLabel)
+
+        let getApiKeyButton = NSButton(title: "Get free key ↗", target: self, action: #selector(openAPIKeyPage))
+        getApiKeyButton.bezelStyle = .glass
+        getApiKeyButton.controlSize = .small
+        getApiKeyButton.isEnabled = false // Disable button until we have set up with the new API
+        let btnW: CGFloat = 115
+        getApiKeyButton.frame = NSRect(x: size.width - rx - btnW, y: ay + 2, width: btnW, height: 18)
+        view.addSubview(getApiKeyButton)
+
+        let fx = lx + labelW + 8
+        apiKeyField.frame = NSRect(x: fx, y: ay, width: getApiKeyButton.frame.minX - fx - 8, height: 22)
+        apiKeyField.placeholderString = "Paste token here"
+        view.addSubview(apiKeyField)
+
+        // Station row
+        let sy = ay - 16 - 22
+        view.addSubview(label("Station:", width: labelW, x: lx, y: sy))
+        stationField.frame = NSRect(x: fx, y: sy, width: 65, height: 22)
         stationField.placeholderString = "PAD"
-        content.addSubview(stationField)
+        view.addSubview(stationField)
 
-        let hint = NSTextField(labelWithString: "Three-letter code such as PAD, KGX, EDB")
-        hint.font = NSFont.systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 20, y: 206, width: 420, height: 16)
-        content.addSubview(hint)
+        // Station hint
+        let hint = smallLabel(
+            "Three-letter code: PAD = Paddington · KGX = King's Cross · EDB = Edinburgh",
+            x: lx, y: sy - 8 - 14, width: rw
+        )
+        view.addSubview(hint)
 
-        let paddingLabel = NSTextField(labelWithString: "Side padding:")
-        paddingLabel.frame = NSRect(x: 20, y: 172, width: 110, height: 20)
-        content.addSubview(paddingLabel)
+        return view
+    }
 
+    private func buildDisplayTab(_ size: NSSize) -> NSView {
+        let view = NSView(frame: NSRect(origin: .zero, size: size))
+        let h = size.height
+        let lx: CGFloat = 16
+        let rx: CGFloat = 16
+        let rw = size.width - lx - rx
+        let labelW: CGFloat = 108
+
+        // Padding row
+        var ty = h - 20 - 22
+        view.addSubview(label("Side padding:", width: labelW, x: lx, y: ty))
         paddingSlider.minValue = 0
         paddingSlider.maxValue = 30
         paddingSlider.numberOfTickMarks = 7
         paddingSlider.allowsTickMarkValuesOnly = false
         paddingSlider.target = self
         paddingSlider.action = #selector(paddingSliderChanged(_:))
-        paddingSlider.frame = NSRect(x: 135, y: 172, width: 220, height: 20)
-        content.addSubview(paddingSlider)
-
-        paddingValueLabel.frame = NSRect(x: 362, y: 172, width: 50, height: 20)
+        paddingSlider.frame = NSRect(x: lx + labelW + 8, y: ty, width: 210, height: 22)
+        view.addSubview(paddingSlider)
+        paddingValueLabel.frame = NSRect(x: paddingSlider.frame.maxX + 6, y: ty + 1, width: 44, height: 20)
         paddingValueLabel.alignment = .right
-        content.addSubview(paddingValueLabel)
+        view.addSubview(paddingValueLabel)
 
-        let paddingHint = NSTextField(labelWithString: "Black margin on each side of the board (0–30% of screen width).")
-        paddingHint.font = NSFont.systemFont(ofSize: 11)
-        paddingHint.textColor = .secondaryLabelColor
-        paddingHint.frame = NSRect(x: 20, y: 152, width: 420, height: 16)
-        content.addSubview(paddingHint)
+        ty -= 8 + 14
+        view.addSubview(smallLabel(
+            "Black margin on each side of the board (0–30% of screen width).",
+            x: lx, y: ty, width: rw
+        ))
 
-        let styleLabel = NSTextField(labelWithString: "Display style:")
-        styleLabel.frame = NSRect(x: 20, y: 118, width: 105, height: 20)
-        content.addSubview(styleLabel)
+        ty -= 16 + 18
+        showStationCheckbox.frame = NSRect(x: lx, y: ty, width: rw, height: 18)
+        view.addSubview(showStationCheckbox)
 
-        styleControl.frame = NSRect(x: 130, y: 114, width: 310, height: 26)
-        content.addSubview(styleControl)
-
-        let styleHint = NSTextField(labelWithString: "OLED: amber pixels - LCD: white on dark blue - Dot Matrix: visible LED grid")
-        styleHint.font = NSFont.systemFont(ofSize: 11)
-        styleHint.textColor = .secondaryLabelColor
-        styleHint.frame = NSRect(x: 20, y: 94, width: 420, height: 16)
-        content.addSubview(styleHint)
-
-        showStationCheckbox.frame = NSRect(x: 20, y: 68, width: 340, height: 18)
-        content.addSubview(showStationCheckbox)
-
-        useMetalCheckbox.frame = NSRect(x: 20, y: 44, width: 420, height: 18)
-        content.addSubview(useMetalCheckbox)
-
-        let koFi = NSButton(title: "", target: self, action: #selector(openKoFi))
-        koFi.bezelStyle = .rounded
-        koFi.bezelColor = NSColor(calibratedRed: 1.0, green: 0.37, blue: 0.18, alpha: 1.0)
-        koFi.attributedTitle = NSAttributedString(
-            string: "❤ Support",
-            attributes: [
-                .foregroundColor: NSColor.white,
-                .font: NSFont.systemFont(ofSize: 13, weight: .medium)
-            ]
+        // Advanced options disclosure
+        ty -= 16 + 18
+        let disclosureRow = NSView(frame: NSRect(x: 0, y: ty, width: size.width, height: 18))
+        disclosureRow.alphaValue = 0.55
+        disclosureRow.addGestureRecognizer(
+            NSClickGestureRecognizer(target: self, action: #selector(toggleAdvanced))
         )
-        koFi.frame = NSRect(x: 20, y: 8, width: 100, height: 32)
-        content.addSubview(koFi)
+        view.addSubview(disclosureRow)
 
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
-        cancel.bezelStyle = .rounded
-        cancel.frame = NSRect(x: 260, y: 8, width: 80, height: 32)
-        content.addSubview(cancel)
+        let chevronView = NSImageView(frame: NSRect(x: lx, y: 3, width: 12, height: 12))
+        chevronView.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        chevronView.imageScaling = .scaleNone
+        chevronView.imageAlignment = .alignCenter
+        chevronView.contentTintColor = .labelColor
+        disclosureRow.addSubview(chevronView)
+        advancedChevronView = chevronView
 
-        let save = NSButton(title: "Save", target: self, action: #selector(save))
-        save.bezelStyle = .rounded
-        save.keyEquivalent = "\r"
-        save.frame = NSRect(x: 360, y: 8, width: 80, height: 32)
-        content.addSubview(save)
+        let advLabel = NSTextField(labelWithString: "Advanced options")
+        advLabel.font = NSFont.systemFont(ofSize: 12)
+        advLabel.frame = NSRect(x: lx + 16, y: 1, width: 200, height: 16)
+        disclosureRow.addSubview(advLabel)
 
-        return win
+        // Advanced container (hidden by default)
+        // Contents: style row (26) + gap (6) + style hint (14) + gap (8) + metal checkbox (18) = 72
+        let advH: CGFloat = 26 + 6 + 14 + 8 + 18
+        ty -= 10 + advH
+        let container = NSView(frame: NSRect(x: 0, y: ty, width: size.width, height: advH))
+        container.isHidden = true
+        view.addSubview(container)
+        advancedContainer = container
+
+        useMetalCheckbox.frame = NSRect(x: lx, y: 0, width: rw, height: 18)
+        container.addSubview(useMetalCheckbox)
+
+        container.addSubview(smallLabel(
+            "Dot Matrix: GPU-accelerated LED grid · OLED: amber pixels · LCD: white on dark blue",
+            x: lx, y: 18 + 8, width: rw
+        ))
+
+        let styleY: CGFloat = 18 + 8 + 14 + 6
+        container.addSubview(label("Display style:", width: labelW, x: lx, y: styleY + 2))
+        styleControl.frame = NSRect(x: lx + labelW + 8, y: styleY, width: rw - labelW - 8, height: 26)
+        container.addSubview(styleControl)
+
+        return view
     }
+
+    // MARK: - Layout helpers
+
+    private func label(_ text: String, width: CGFloat, x: CGFloat, y: CGFloat) -> NSTextField {
+        let f = NSTextField(labelWithString: text)
+        f.frame = NSRect(x: x, y: y + 1, width: width, height: 20)
+        return f
+    }
+
+    private func smallLabel(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat) -> NSTextField {
+        let f = NSTextField(labelWithString: text)
+        f.font = NSFont.systemFont(ofSize: 11)
+        f.textColor = .secondaryLabelColor
+        f.frame = NSRect(x: x, y: y, width: width, height: 14)
+        return f
+    }
+
+    // MARK: - Actions
 
     @objc private func paddingSliderChanged(_ sender: NSSlider) {
         paddingValueLabel.stringValue = "\(Int(sender.doubleValue))%"
     }
 
-    @objc private func save() {
+    @objc private func toggleAdvanced() {
+        let expanding = advancedContainer?.isHidden == true
+        advancedContainer?.isHidden = !expanding
+        let symbolName = expanding ? "chevron.down" : "chevron.right"
+        advancedChevronView?.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+    }
+
+    @objc private func saveAction() {
         var cfg = DepartureBoardConfig.load()
-        cfg.apiKey = apiKeyField.stringValue.trimmingCharacters(in: .whitespaces)
+        cfg.apiKey  = apiKeyField.stringValue.trimmingCharacters(in: .whitespaces)
         cfg.station = stationField.stringValue.trimmingCharacters(in: .whitespaces).uppercased()
         cfg.sidePaddingPct = paddingSlider.doubleValue
         switch styleControl.selectedSegment {
@@ -164,18 +298,25 @@ final class ConfigureSheetController: NSObject {
         default: cfg.displayStyle = .dotMatrix
         }
         cfg.showStationInClock = showStationCheckbox.state == .on
-        cfg.useMetalRendering  = useMetalCheckbox.state == .on
+        cfg.useMetalRendering  = useMetalCheckbox.state  == .on
         cfg.save()
         onSave?(cfg)
+        endSheet()
+    }
+
+    @objc private func cancelAction() {
         endSheet()
     }
 
     @objc private func openKoFi() {
         NSWorkspace.shared.open(URL(string: "https://ko-fi.com/justynhenman")!)
     }
-
-    @objc private func cancel() {
-        endSheet()
+    
+    /// Points to new raildata API page. Currently not wired up.
+    /// Ideally in next PR we will instead default it to my API in a cloudflare worker
+    /// With API key being totally optional
+    @objc private func openAPIKeyPage() {
+        NSWorkspace.shared.open(URL(string: "https://raildata.org.uk")!)
     }
 
     private func endSheet() {
