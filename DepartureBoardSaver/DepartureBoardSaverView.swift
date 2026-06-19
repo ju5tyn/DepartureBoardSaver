@@ -123,18 +123,21 @@ final class DepartureBoardSaverView: ScreenSaverView {
         let station = cfg.station
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
+                let sleepSeconds: Int
                 do {
                     let result = try await service.fetch()
                     await MainActor.run { [weak self] in
                         self?.board.apply(result: result)
                     }
+                    sleepSeconds = 60
                 } catch {
                     let msg = Self.friendlyMessage(for: error)
                     await MainActor.run { [weak self] in
                         self?.board.setError(stationName: station, message: msg)
                     }
+                    sleepSeconds = 15
                 }
-                try? await Task.sleep(for: .seconds(15))
+                try? await Task.sleep(for: .seconds(sleepSeconds))
             }
         }
     }
@@ -435,10 +438,9 @@ final class DepartureBoardSaverView: ScreenSaverView {
             default: break
             }
         }
-        // SOAP fault — the API message is already short and useful ("Invalid Access Token" etc.)
-        if nsErr.domain == "OpenLDBWS" { return nsErr.localizedDescription }
         if let svcErr = error as? DepartureServiceError {
             switch svcErr {
+            case .badStatus(401):      return "Invalid API Key"
             case .badStatus(let code): return "Server Error (\(code))"
             case .parseFailure:        return "Data Error"
             }

@@ -12,7 +12,8 @@ final class ConfigureSheetController: NSObject {
 
     // Data tab
     private let apiKeyField = NSSecureTextField(frame: .zero)
-    private let stationField = NSTextField(frame: .zero)
+    private let stationCombo = NSComboBox(frame: .zero)
+    private var filteredStations: [StationEntry] = []
 
     // Display tab
     private let paddingSlider = NSSlider(frame: .zero)
@@ -35,14 +36,24 @@ final class ConfigureSheetController: NSObject {
     private var advancedContainer: NSView?
     private var advancedChevronView: NSImageView?
 
+    private var dataAdvancedContainer: NSView?
+    private var dataAdvancedChevronView: NSImageView?
+
     private var onSave: ((DepartureBoardConfig) -> Void)?
 
     func present(onSave: @escaping (DepartureBoardConfig) -> Void) {
         _ = window  // ensure makeWindow() has run so slider min/max are set before assigning doubleValue
         self.onSave = onSave
         let cfg = DepartureBoardConfig.load()
-        apiKeyField.stringValue  = cfg.apiKey
-        stationField.stringValue = cfg.station
+        apiKeyField.stringValue = cfg.apiKey
+        if let entry = StationSearch.shared.entry(forCRS: cfg.station) {
+            filteredStations = [entry]
+            stationCombo.stringValue = entry.name
+        } else {
+            filteredStations = []
+            stationCombo.stringValue = cfg.station
+        }
+        stationCombo.reloadData()
         paddingSlider.doubleValue = cfg.sidePaddingPct
         paddingValueLabel.stringValue = "\(Int(cfg.sidePaddingPct))%"
         switch cfg.displayStyle {
@@ -136,42 +147,86 @@ final class ConfigureSheetController: NSObject {
     private func buildDataTab(_ size: NSSize) -> NSView {
         let view = NSView(frame: NSRect(origin: .zero, size: size))
         let h = size.height
-        let lx: CGFloat = 16   // left margin
-        let rx: CGFloat = 16   // right margin
-        let rw = size.width - lx - rx  // usable row width
+        let lx: CGFloat = 16
+        let rx: CGFloat = 16
+        let rw = size.width - lx - rx
         let labelW: CGFloat = 80
+        let fx = lx + labelW + 8
 
-        // API Key row
-        let ay = h - 20 - 22
-        let apiLabel = label("API key:", width: labelW, x: lx, y: ay)
-        view.addSubview(apiLabel)
+        // Station row (primary)
+        var ty = h - 20 - 22
+        view.addSubview(label("Station:", width: labelW, x: lx, y: ty))
+        stationCombo.frame = NSRect(x: fx, y: ty, width: rw - labelW - 8, height: 22)
+        stationCombo.placeholderString = "Search by name or CRS code…"
+        stationCombo.usesDataSource = true
+        stationCombo.dataSource = self
+        stationCombo.delegate = self
+        stationCombo.numberOfVisibleItems = 8
+        stationCombo.completes = false
+        view.addSubview(stationCombo)
+
+        ty -= 8 + 14
+        view.addSubview(smallLabel(
+            "Type a station name or 3-letter code — e.g. \"Paddington\" or \"PAD\"",
+            x: lx, y: ty, width: rw
+        ))
+
+        // Advanced disclosure
+        ty -= 16 + 18
+        let disclosureRow = NSView(frame: NSRect(x: 0, y: ty, width: size.width, height: 18))
+        disclosureRow.alphaValue = 0.55
+        disclosureRow.addGestureRecognizer(
+            NSClickGestureRecognizer(target: self, action: #selector(toggleDataAdvanced))
+        )
+        view.addSubview(disclosureRow)
+
+        let dataChevron = NSImageView(frame: NSRect(x: lx, y: 3, width: 12, height: 12))
+        dataChevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        dataChevron.imageScaling = .scaleNone
+        dataChevron.imageAlignment = .alignCenter
+        dataChevron.contentTintColor = .labelColor
+        disclosureRow.addSubview(dataChevron)
+        dataAdvancedChevronView = dataChevron
+
+        let advLabel = NSTextField(labelWithString: "Advanced options")
+        advLabel.font = NSFont.systemFont(ofSize: 12)
+        advLabel.frame = NSRect(x: lx + 16, y: 1, width: 200, height: 16)
+        disclosureRow.addSubview(advLabel)
+
+        // Advanced container — API key (hidden by default)
+        // Contents: API key row (22) + gap (4) + hint (14) = 40
+        let advH: CGFloat = 40
+        ty -= 10 + advH
+        let dataContainer = NSView(frame: NSRect(x: 0, y: ty, width: size.width, height: advH))
+        dataContainer.isHidden = true
+        view.addSubview(dataContainer)
+        dataAdvancedContainer = dataContainer
+
+        let apiY: CGFloat = advH - 22
+        dataContainer.addSubview(label("API key:", width: labelW, x: lx, y: apiY))
 
         let getApiKeyButton = NSButton(title: "Get free key ↗", target: self, action: #selector(openAPIKeyPage))
         getApiKeyButton.bezelStyle = .glass
         getApiKeyButton.controlSize = .small
-        getApiKeyButton.isEnabled = false // Disable button until we have set up with the new API
         let btnW: CGFloat = 115
-        getApiKeyButton.frame = NSRect(x: size.width - rx - btnW, y: ay + 2, width: btnW, height: 18)
-        view.addSubview(getApiKeyButton)
+        getApiKeyButton.frame = NSRect(x: size.width - rx - btnW, y: apiY + 2, width: btnW, height: 18)
+        dataContainer.addSubview(getApiKeyButton)
 
-        let fx = lx + labelW + 8
-        apiKeyField.frame = NSRect(x: fx, y: ay, width: getApiKeyButton.frame.minX - fx - 8, height: 22)
-        apiKeyField.placeholderString = "Paste token here"
-        view.addSubview(apiKeyField)
+        apiKeyField.frame = NSRect(x: fx, y: apiY, width: getApiKeyButton.frame.minX - fx - 8, height: 22)
+        apiKeyField.placeholderString = "Optional — leave blank to use shared service"
+        dataContainer.addSubview(apiKeyField)
 
-        // Station row
-        let sy = ay - 16 - 22
-        view.addSubview(label("Station:", width: labelW, x: lx, y: sy))
-        stationField.frame = NSRect(x: fx, y: sy, width: 65, height: 22)
-        stationField.placeholderString = "PAD"
-        view.addSubview(stationField)
+        dataContainer.addSubview(smallLabel(
+            "Leave blank for shared service, or paste your raildata.org.uk key.",
+            x: lx, y: apiY - 4 - 14, width: rw
+        ))
 
-        // Station hint
-        let hint = smallLabel(
-            "Three-letter code: PAD = Paddington · KGX = King's Cross · EDB = Edinburgh",
-            x: lx, y: sy - 8 - 14, width: rw
-        )
-        view.addSubview(hint)
+        // Attribution — fixed at bottom
+        view.addSubview(smallLabel(
+            "Train data provided by Rail Delivery Group (raildata.org.uk).",
+            x: lx, y: 16, width: rw
+        ))
 
         return view
     }
@@ -287,10 +342,30 @@ final class ConfigureSheetController: NSObject {
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
     }
 
+    @objc private func toggleDataAdvanced() {
+        let expanding = dataAdvancedContainer?.isHidden == true
+        dataAdvancedContainer?.isHidden = !expanding
+        let symbolName = expanding ? "chevron.down" : "chevron.right"
+        dataAdvancedChevronView?.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+    }
+
     @objc private func saveAction() {
         var cfg = DepartureBoardConfig.load()
-        cfg.apiKey  = apiKeyField.stringValue.trimmingCharacters(in: .whitespaces)
-        cfg.station = stationField.stringValue.trimmingCharacters(in: .whitespaces).uppercased()
+        cfg.apiKey = apiKeyField.stringValue.trimmingCharacters(in: .whitespaces)
+        let stationText = stationCombo.stringValue.trimmingCharacters(in: .whitespaces)
+        if let match = StationSearch.shared.exactMatch(byName: stationText) {
+            cfg.station = match.crs
+        } else if stationText.count == 3 {
+            cfg.station = stationText.uppercased()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Station not recognised"
+            alert.informativeText = "Select a station from the dropdown, or enter a valid 3-letter CRS code."
+            alert.alertStyle = .warning
+            alert.runModal()
+            return
+        }
         cfg.sidePaddingPct = paddingSlider.doubleValue
         switch styleControl.selectedSegment {
         case 1:  cfg.displayStyle = .oled
@@ -312,9 +387,6 @@ final class ConfigureSheetController: NSObject {
         NSWorkspace.shared.open(URL(string: "https://ko-fi.com/justynhenman")!)
     }
     
-    /// Points to new raildata API page. Currently not wired up.
-    /// Ideally in next PR we will instead default it to my API in a cloudflare worker
-    /// With API key being totally optional
     @objc private func openAPIKeyPage() {
         NSWorkspace.shared.open(URL(string: "https://raildata.org.uk")!)
     }
@@ -325,5 +397,32 @@ final class ConfigureSheetController: NSObject {
         } else {
             window.endSheet(window)
         }
+    }
+}
+
+// MARK: - NSComboBoxDataSource
+
+extension ConfigureSheetController: NSComboBoxDataSource {
+    func numberOfItems(in comboBox: NSComboBox) -> Int {
+        filteredStations.count
+    }
+
+    func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
+        filteredStations[index].name
+    }
+}
+
+// MARK: - NSComboBoxDelegate
+
+extension ConfigureSheetController: NSComboBoxDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard let combo = obj.object as? NSComboBox, combo === stationCombo else { return }
+        let text = combo.stringValue
+        if text.count >= 2 {
+            filteredStations = StationSearch.shared.search(text)
+        } else {
+            filteredStations = []
+        }
+        stationCombo.reloadData()
     }
 }
