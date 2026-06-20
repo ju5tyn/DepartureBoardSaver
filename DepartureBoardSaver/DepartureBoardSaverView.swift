@@ -15,7 +15,7 @@ final class DepartureBoardSaverView: ScreenSaverView {
     private static var boardHeight: CGFloat { CGFloat(DepartureBoard.boardHeight) }
 
     private let board: DepartureBoard
-    private var lastFrameDate = Date()
+    private var lastFrameTime: CFTimeInterval = 0
     private var refreshTask: Task<Void, Never>?
     private let sheetController = ConfigureSheetController()
     private var sidePaddingPct: Double = 0
@@ -54,7 +54,7 @@ final class DepartureBoardSaverView: ScreenSaverView {
         actualIsPreview = preview
 
         super.init(frame: frame, isPreview: preview)
-        animationTimeInterval = 1.0 / 30.0
+        animationTimeInterval = 1.0 / 60.0
 
         isGhostInstance = detectGhostInstance(frame: frame)
         if isGhostInstance { return }
@@ -68,7 +68,7 @@ final class DepartureBoardSaverView: ScreenSaverView {
         self.board = DepartureBoard(bundle: bundle)
         (self.offscreenRep, self.offscreenImage) = Self.makeOffscreen()
         super.init(coder: coder)
-        animationTimeInterval = 1.0 / 30.0
+        animationTimeInterval = 1.0 / 60.0
         registerWillStopObserverIfNeeded()
     }
 
@@ -295,12 +295,11 @@ final class DepartureBoardSaverView: ScreenSaverView {
     }
 
     override func animateOneFrame() {
-        let now = Date()
-        exitPreviewIfSystemSettingsClosed(now: now)
-
-        board.advance(by: now.timeIntervalSince(lastFrameDate))
-        lastFrameDate = now
-
+        let now = CACurrentMediaTime()
+        exitPreviewIfSystemSettingsClosed(now: Date())
+        let delta = lastFrameTime == 0 ? 0 : now - lastFrameTime
+        lastFrameTime = now
+        board.advance(by: delta)
         if isUsingMetal, let renderer = metalRenderer {
             setupMetalLayerIfNeeded()
             if let ml = metalLayer {

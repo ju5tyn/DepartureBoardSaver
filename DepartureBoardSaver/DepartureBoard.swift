@@ -80,6 +80,7 @@ final class DepartureBoard {
     private(set) var state: BoardState = .notConfigured
 
     private var scrollX: CGFloat = 0
+    private var scrollXFraction: CGFloat = 0
     private var scrollPauseRemaining: TimeInterval = 1.5
     private let scrollSpeed: CGFloat = 32
 
@@ -97,6 +98,7 @@ final class DepartureBoard {
 
     func apply(result: DepartureResult) {
         scrollX = 0
+        scrollXFraction = 0
         scrollPauseRemaining = 1.5
         state = .live(stationName: result.stationName, departures: result.departures)
     }
@@ -108,6 +110,7 @@ final class DepartureBoard {
 
     func setNotConfigured() {
         scrollX = 0
+        scrollXFraction = 0
         scrollPauseRemaining = 1.5
         state = .notConfigured
     }
@@ -141,10 +144,14 @@ final class DepartureBoard {
             scrollPauseRemaining -= delta
             return
         }
-        scrollX -= CGFloat(delta) * scrollSpeed
+        scrollXFraction += CGFloat(delta) * scrollSpeed
+        let pixels = floor(scrollXFraction)
+        scrollXFraction -= pixels
+        scrollX -= pixels
         let tw = textSize(text, font: fonts.regular).width
         if scrollX < -tw - 12 {
             scrollX = 0
+            scrollXFraction = 0
             scrollPauseRemaining = 1.5
         }
     }
