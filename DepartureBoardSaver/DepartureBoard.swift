@@ -132,7 +132,8 @@ final class DepartureBoard {
         let scrollText: String?
         switch state {
         case .live(_, let deps) where deps.first != nil:
-            scrollText = callingAtText(for: deps.first!)
+            let dep = deps.first!
+            scrollText = dep.callingAt.count > 1 ? callingAtText(for: dep) : nil
         case .notConfigured:
             scrollText = Self.setupInstructions
         default:
@@ -356,7 +357,16 @@ final class DepartureBoard {
 
     private func drawText(_ text: String, font: NSFont, at point: CGPoint) {
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foregroundColor]
-        NSAttributedString(string: text, attributes: attrs).draw(at: point)
+        // Draw character-by-character, rounding each glyph's x position to an integer
+        // pixel while accumulating the true float advance. This prevents sub-pixel
+        // drift from pressing adjacent characters together in pixel/dot-matrix fonts.
+        var floatX = point.x
+        for ch in text {
+            let s = String(ch)
+            let as_ = NSAttributedString(string: s, attributes: attrs)
+            as_.draw(at: CGPoint(x: round(floatX), y: point.y))
+            floatX += as_.size().width
+        }
     }
 
     private func centredText(_ text: String, font: NSFont, y: CGFloat, width: CGFloat) {
