@@ -132,7 +132,8 @@ final class DepartureBoard {
         let scrollText: String?
         switch state {
         case .live(_, let deps) where deps.first != nil:
-            scrollText = callingAtText(for: deps.first!)
+            let dep = deps.first!
+            scrollText = dep.callingAt.count > 1 ? callingAtText(for: dep) : nil
         case .notConfigured:
             scrollText = Self.setupInstructions
         default:
